@@ -742,7 +742,6 @@ async def status(interaction: discord.Interaction) -> None:
         value=f"{user_settings.source_language or '(inherit)'} → {user_settings.target_language or '(inherit)'}",
         inline=False,
     )
-    embed.add_field(name="Embeds", value=str(settings.use_embeds), inline=True)
     if settings.auto_translate_channels:
         channels = " ".join(f"<#{cid}>" for cid in settings.auto_translate_channels)
     else:
