@@ -406,7 +406,11 @@ async def send_translation(
     target: str,
     author: discord.User | discord.Member,
     display_mode: str,
+    attachments: List[discord.Attachment] = None,
 ) -> None:
+    if attachments is None:
+        attachments = []
+    
     # Webhook mode (looks like user posted it) - for embed and text
     if display_mode in ["webhook", "text", "embed"] and isinstance(channel, discord.TextChannel):
         try:
@@ -418,23 +422,39 @@ async def send_translation(
             if not webhook:
                 webhook = await channel.create_webhook(name="translate-bot")
             
+            files = []
+            for att in attachments:
+                try:
+                    file = await att.to_file()
+                    files.append(file)
+                except Exception:
+                    pass
+            
             if display_mode == "webhook" or display_mode == "embed":
                 embed = build_embed(original_text, translated_text, source, target, author)
-                await webhook.send(embed=embed, username=author.display_name, avatar_url=author.display_avatar.url)
+                await webhook.send(embed=embed, username=author.display_name, avatar_url=author.display_avatar.url, files=files)
             elif display_mode == "text":
                 content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
-                await webhook.send(content, username=author.display_name, avatar_url=author.display_avatar.url)
+                await webhook.send(content, username=author.display_name, avatar_url=author.display_avatar.url, files=files)
             return
         except discord.Forbidden:
             pass
     
     # Fallback: plain bot message if webhook fails
+    files = []
+    for att in attachments:
+        try:
+            file = await att.to_file()
+            files.append(file)
+        except Exception:
+            pass
+    
     if display_mode == "embed":
         embed = build_embed(original_text, translated_text, source, target, author)
-        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+        await channel.send(embed=embed, files=files, allowed_mentions=discord.AllowedMentions.none())
     else:
         content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
-        await channel.send(content, allowed_mentions=discord.AllowedMentions.none())
+        await channel.send(content, files=files, allowed_mentions=discord.AllowedMentions.none())
 
 
 @bot.event
@@ -462,6 +482,7 @@ async def on_message(message: discord.Message) -> None:
             target=target,
             author=message.author,
             display_mode=settings.display_mode,
+            attachments=message.attachments,
         )
         try:
             await message.delete()
@@ -488,6 +509,7 @@ async def on_message(message: discord.Message) -> None:
                     target=target,
                     author=message.author,
                     display_mode=settings.display_mode,
+                    attachments=message.attachments,
                 )
 
 
