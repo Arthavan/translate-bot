@@ -271,9 +271,10 @@ class Translator:
         if not api_key:
             raise RuntimeError("Missing GEMINI_API_KEY for Gemini provider.")
         model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        model_path = model if model.startswith("models/") else f"models/{model}"
         url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{model}:generateContent?key={api_key}"
+            "https://generativelanguage.googleapis.com/v1/"
+            f"{model_path}:generateContent?key={api_key}"
         )
         prompt = (
             "You are a translation engine. Return only the translated text, no extra commentary.\n"
