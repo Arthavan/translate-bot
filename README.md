@@ -41,21 +41,21 @@ Cloudflare Pages is **not** suitable (no long-running processes). For free-ish h
 - Fly.io / Render / Railway (free tiers may be limited)
 - Cloudflare Workers (paid after free tier)
 
-## Deploy on Bot-Hosting.net (free, no credit card)
+## Deploy on Wispbyte (free, 24/7)
 
-1) Go to https://bot-hosting.net/panel and sign up
-2) Create a new bot instance
-3) Upload this repository:
-   - Clone it locally or download as ZIP
-   - In the panel, upload the files (or connect GitHub repo if they support it)
-4) Set environment variables in the panel:
+1) Sign up at https://wispbyte.com/client (completely free, no credit card)
+2) Create a new Discord Bot project
+3) Upload your bot files:
+   - Download/clone from https://github.com/Arthavan/translate-bot
+   - Upload the files to Wispbyte dashboard
+4) Set environment variables in the dashboard:
    - `DISCORD_TOKEN` = your bot token
    - `GEMINI_API_KEY` = your Gemini API key
    - Or use: `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`
-5) Set the start command to: `python main.py`
-6) Start the bot
+5) Set start command to: `python main.py`
+6) Deploy and your bot runs 24/7 for free!
 
-Your bot will run 24/7 for free. Check their docs at https://wiki.bot-hosting.net/ for detailed setup.
+Check their guide: https://wispbyte.com/kb or join their Discord at https://wispbyte.com/discord
 
 ## Provider keys
 Set keys in .env:
