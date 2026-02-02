@@ -407,8 +407,8 @@ async def send_translation(
     author: discord.User | discord.Member,
     display_mode: str,
 ) -> None:
-    # Webhook mode (looks like user posted it)
-    if display_mode == "webhook" and isinstance(channel, discord.TextChannel):
+    # Webhook mode (looks like user posted it) - for embed and text
+    if display_mode in ["webhook", "text", "embed"] and isinstance(channel, discord.TextChannel):
         try:
             webhook = None
             for wh in await channel.webhooks():
@@ -418,19 +418,21 @@ async def send_translation(
             if not webhook:
                 webhook = await channel.create_webhook(name="translate-bot")
             
-            if display_mode == "webhook":
+            if display_mode == "webhook" or display_mode == "embed":
                 embed = build_embed(original_text, translated_text, source, target, author)
                 await webhook.send(embed=embed, username=author.display_name, avatar_url=author.display_avatar.url)
-                return
+            elif display_mode == "text":
+                content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
+                await webhook.send(content, username=author.display_name, avatar_url=author.display_avatar.url)
+            return
         except discord.Forbidden:
             pass
     
-    # Embed mode (box)
+    # Fallback: plain bot message if webhook fails
     if display_mode == "embed":
         embed = build_embed(original_text, translated_text, source, target, author)
         await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
-    # Plain text mode
-    elif display_mode == "text":
+    else:
         content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
         await channel.send(content, allowed_mentions=discord.AllowedMentions.none())
 
