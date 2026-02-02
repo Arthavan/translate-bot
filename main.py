@@ -27,13 +27,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "default_target_language": "auto-bidir",
     "bidir_languages": ["en", "zh"],
     "fallback_target_language": "en",
-    "use_embeds": True,
+    "default_display_mode": "webhook",
 }
 
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 PROVIDERS = ["deepseek", "openai", "google", "gemini"]
 MODES = ["auto", "mirror", "command"]
+DISPLAY_MODES = ["embed", "text", "webhook"]
 LANGUAGE_CHOICES = ["auto", "auto-bidir", "en", "zh"]
 RESERVED_LANGUAGE_CHOICES = {"auto", "auto-bidir"}
 LANGUAGE_CODE_RE = re.compile(r"^[a-z]{2,3}(-[a-z]{2})?$")
@@ -54,7 +55,7 @@ class GuildSettings:
     mode: str
     source_language: str
     target_language: str
-    use_embeds: bool
+    display_mode: str
     auto_translate_channels: List[int]
     mirror_pairs: List[Dict[str, int]]
 
@@ -79,7 +80,7 @@ class SettingsManager:
             "mode": self._config["default_mode"],
             "source_language": self._config["default_source_language"],
             "target_language": self._config["default_target_language"],
-            "use_embeds": self._config["use_embeds"],
+            "display_mode": self._config["default_display_mode"],
             "auto_translate_channels": [],
             "mirror_pairs": [],
         }
@@ -404,10 +405,10 @@ async def send_translation(
     source: str,
     target: str,
     author: discord.User | discord.Member,
-    use_embeds: bool,
+    display_mode: str,
 ) -> None:
-    # Try webhook first (looks more like user)
-    if isinstance(channel, discord.TextChannel):
+    # Webhook mode (looks like user posted it)
+    if display_mode == "webhook" and isinstance(channel, discord.TextChannel):
         try:
             webhook = None
             for wh in await channel.webhooks():
@@ -417,21 +418,19 @@ async def send_translation(
             if not webhook:
                 webhook = await channel.create_webhook(name="translate-bot")
             
-            if use_embeds:
+            if display_mode == "webhook":
                 embed = build_embed(original_text, translated_text, source, target, author)
                 await webhook.send(embed=embed, username=author.display_name, avatar_url=author.display_avatar.url)
-            else:
-                content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
-                await webhook.send(content, username=author.display_name, avatar_url=author.display_avatar.url)
-            return
+                return
         except discord.Forbidden:
             pass
     
-    # Fallback to regular bot message if webhook fails
-    if use_embeds:
+    # Embed mode (box)
+    if display_mode == "embed":
         embed = build_embed(original_text, translated_text, source, target, author)
         await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
-    else:
+    # Plain text mode
+    elif display_mode == "text":
         content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
         await channel.send(content, allowed_mentions=discord.AllowedMentions.none())
 
@@ -460,7 +459,7 @@ async def on_message(message: discord.Message) -> None:
             source=source,
             target=target,
             author=message.author,
-            use_embeds=settings.use_embeds,
+            display_mode=settings.display_mode,
         )
         try:
             await message.delete()
@@ -486,7 +485,7 @@ async def on_message(message: discord.Message) -> None:
                     source=source,
                     target=target,
                     author=message.author,
-                    use_embeds=settings.use_embeds,
+                    display_mode=settings.display_mode,
                 )
 
 
@@ -693,6 +692,23 @@ async def remove_mirror(
     )
 
 
+@bot.tree.command(name="set_display_mode", description="Set display mode: embed, text, or webhook")
+@app_commands.describe(mode="embed (box), text (plain), or webhook (user-like)")
+async def set_display_mode(interaction: discord.Interaction, mode: str) -> None:
+    if not interaction.guild:
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+        return
+    if not is_admin(interaction):
+        await interaction.response.send_message("You need Manage Server to do that.", ephemeral=True)
+        return
+    mode = mode.lower()
+    if mode not in DISPLAY_MODES:
+        await interaction.response.send_message(f"Invalid display mode. Choose: {', '.join(DISPLAY_MODES)}", ephemeral=True)
+        return
+    await settings_manager.update_settings(interaction.guild.id, {"display_mode": mode})
+    await interaction.response.send_message(f"Display mode set to {mode}.", ephemeral=True)
+
+
 @bot.tree.command(name="set_embeds", description="Enable/disable embed output")
 @app_commands.describe(enabled="Use embeds for translations")
 async def set_embeds(interaction: discord.Interaction, enabled: bool) -> None:
@@ -719,6 +735,7 @@ async def status(interaction: discord.Interaction) -> None:
     embed = discord.Embed(title="Translation Settings", color=discord.Color.green())
     embed.add_field(name="Provider", value=settings.provider, inline=True)
     embed.add_field(name="Mode", value=settings.mode, inline=True)
+    embed.add_field(name="Display mode", value=settings.display_mode, inline=True)
     embed.add_field(name="Languages", value=f"{settings.source_language} → {settings.target_language}", inline=False)
     embed.add_field(
         name="Your overrides",
