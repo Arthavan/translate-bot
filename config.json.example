@@ -1,0 +1,9 @@
+{
+  "default_provider": "deepseek",
+  "default_mode": "auto",
+  "default_source_language": "auto",
+  "default_target_language": "auto-bidir",
+  "bidir_languages": ["en", "zh"],
+  "fallback_target_language": "en",
+  "use_embeds": true
+}
