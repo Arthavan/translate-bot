@@ -406,6 +406,28 @@ async def send_translation(
     author: discord.User | discord.Member,
     use_embeds: bool,
 ) -> None:
+    # Try webhook first (looks more like user)
+    if isinstance(channel, discord.TextChannel):
+        try:
+            webhook = None
+            for wh in await channel.webhooks():
+                if wh.name == "translate-bot":
+                    webhook = wh
+                    break
+            if not webhook:
+                webhook = await channel.create_webhook(name="translate-bot")
+            
+            if use_embeds:
+                embed = build_embed(original_text, translated_text, source, target, author)
+                await webhook.send(embed=embed, username=author.display_name, avatar_url=author.display_avatar.url)
+            else:
+                content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
+                await webhook.send(content, username=author.display_name, avatar_url=author.display_avatar.url)
+            return
+        except discord.Forbidden:
+            pass
+    
+    # Fallback to regular bot message if webhook fails
     if use_embeds:
         embed = build_embed(original_text, translated_text, source, target, author)
         await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
