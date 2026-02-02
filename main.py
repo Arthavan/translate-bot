@@ -270,7 +270,7 @@ class Translator:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("Missing GEMINI_API_KEY for Gemini provider.")
-        model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         model_path = model if model.startswith("models/") else f"models/{model}"
         url = (
             "https://generativelanguage.googleapis.com/v1/"
@@ -381,37 +381,36 @@ def resolve_languages(settings: GuildSettings, user_settings: UserSettings, text
 
 
 def build_embed(
+    original_text: str,
     translated_text: str,
     source: str,
     target: str,
     author: discord.User | discord.Member,
-    jump_url: Optional[str],
 ) -> discord.Embed:
     embed = discord.Embed(
         title=f"Translation ({source} → {target})",
-        description=translated_text,
         color=discord.Color.blurple(),
     )
-    embed.set_footer(text=f"Requested by {author.display_name}")
-    if jump_url:
-        embed.add_field(name="Original", value=f"[Jump to message]({jump_url})", inline=False)
+    embed.add_field(name=f"Original ({source})", value=original_text, inline=False)
+    embed.add_field(name=f"Translation ({target})", value=translated_text, inline=False)
+    embed.set_author(name=author.display_name, icon_url=author.display_avatar.url)
     return embed
 
 
 async def send_translation(
     channel: discord.abc.Messageable,
+    original_text: str,
     translated_text: str,
     source: str,
     target: str,
     author: discord.User | discord.Member,
-    jump_url: Optional[str],
     use_embeds: bool,
 ) -> None:
     if use_embeds:
-        embed = build_embed(translated_text, source, target, author, jump_url)
+        embed = build_embed(original_text, translated_text, source, target, author)
         await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
     else:
-        content = f"{translated_text}"
+        content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
         await channel.send(content, allowed_mentions=discord.AllowedMentions.none())
 
 
@@ -434,13 +433,17 @@ async def on_message(message: discord.Message) -> None:
             return
         await send_translation(
             channel=message.channel,
+            original_text=message.content,
             translated_text=translated,
             source=source,
             target=target,
             author=message.author,
-            jump_url=message.jump_url,
             use_embeds=settings.use_embeds,
         )
+        try:
+            await message.delete()
+        except discord.Forbidden:
+            pass
     elif settings.mode == "mirror":
         if not bot.translator:
             return
@@ -456,11 +459,11 @@ async def on_message(message: discord.Message) -> None:
                     continue
                 await send_translation(
                     channel=target_channel,
+                    original_text=message.content,
                     translated_text=translated,
                     source=source,
                     target=target,
                     author=message.author,
-                    jump_url=message.jump_url,
                     use_embeds=settings.use_embeds,
                 )
 
@@ -500,10 +503,10 @@ async def translate_command(
         await interaction.response.send_message(f"Translation failed: {exc}", ephemeral=True)
         return
     if settings.use_embeds:
-        embed = build_embed(translated, source_lang, target_lang, interaction.user, None)
+        embed = build_embed(text, translated, source_lang, target_lang, interaction.user)
         await interaction.response.send_message(embed=embed)
     else:
-        await interaction.response.send_message(translated)
+        await interaction.response.send_message(f"**Original ({source_lang}):** {text}\n**Translation ({target_lang}):** {translated}")
 
 
 @bot.tree.command(name="set_mode", description="Set translation mode for this server")
