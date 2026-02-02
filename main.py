@@ -533,7 +533,7 @@ async def translate_command(
         mode=settings.mode,
         source_language=use_source,
         target_language=use_target,
-        use_embeds=settings.use_embeds,
+        display_mode=settings.display_mode,
         auto_translate_channels=settings.auto_translate_channels,
         mirror_pairs=settings.mirror_pairs,
     )
@@ -547,11 +547,9 @@ async def translate_command(
     except Exception as exc:
         await interaction.response.send_message(f"Translation failed: {exc}", ephemeral=True)
         return
-    if settings.use_embeds:
-        embed = build_embed(text, translated, source_lang, target_lang, interaction.user)
-        await interaction.response.send_message(embed=embed)
-    else:
-        await interaction.response.send_message(f"**Original ({source_lang}):** {text}\n**Translation ({target_lang}):** {translated}")
+    # Always use embed for command responses
+    embed = build_embed(text, translated, source_lang, target_lang, interaction.user)
+    await interaction.response.send_message(embed=embed)
 
 
 @bot.tree.command(name="set_mode", description="Set translation mode for this server")
