@@ -393,7 +393,7 @@ def build_embed(
     )
     embed.add_field(name=f"Original ({source})", value=original_text, inline=False)
     embed.add_field(name=f"Translation ({target})", value=translated_text, inline=False)
-    embed.set_author(name=author.display_name, icon_url=author.display_avatar.url)
+    embed.set_author(name=f"{author.display_name} APP", icon_url=author.display_avatar.url)
     return embed
 
 
