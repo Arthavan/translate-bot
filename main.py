@@ -304,12 +304,14 @@ class TranslateBot(discord.Client):
     def __init__(self, settings_manager: SettingsManager, config: Dict[str, Any]) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
+        intents.reactions = True
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
         self.settings_manager = settings_manager
         self.config = config
         self.session: Optional[aiohttp.ClientSession] = None
         self.translator: Optional[Translator] = None
+        self.message_map: Dict[int, int] = {}  # original_msg_id -> translated_msg_id
 
     async def setup_hook(self) -> None:
         self.session = aiohttp.ClientSession()
@@ -407,7 +409,7 @@ async def send_translation(
     author: discord.User | discord.Member,
     display_mode: str,
     attachments: List[discord.Attachment] = None,
-) -> None:
+) -> Optional[discord.Message]:
     if attachments is None:
         attachments = []
     
@@ -432,11 +434,11 @@ async def send_translation(
             
             if display_mode == "webhook" or display_mode == "embed":
                 embed = build_embed(original_text, translated_text, source, target, author)
-                await webhook.send(embed=embed, username=author.display_name, avatar_url=author.display_avatar.url, files=files)
+                msg = await webhook.send(embed=embed, username=author.display_name, avatar_url=author.display_avatar.url, files=files, wait=True)
             elif display_mode == "text":
                 content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
-                await webhook.send(content, username=author.display_name, avatar_url=author.display_avatar.url, files=files)
-            return
+                msg = await webhook.send(content, username=author.display_name, avatar_url=author.display_avatar.url, files=files, wait=True)
+            return msg
         except discord.Forbidden:
             pass
     
@@ -451,10 +453,10 @@ async def send_translation(
     
     if display_mode == "embed":
         embed = build_embed(original_text, translated_text, source, target, author)
-        await channel.send(embed=embed, files=files, allowed_mentions=discord.AllowedMentions.none())
+        return await channel.send(embed=embed, files=files, allowed_mentions=discord.AllowedMentions.none())
     else:
         content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
-        await channel.send(content, files=files, allowed_mentions=discord.AllowedMentions.none())
+        return await channel.send(content, files=files, allowed_mentions=discord.AllowedMentions.none())
 
 
 @bot.event
@@ -474,7 +476,7 @@ async def on_message(message: discord.Message) -> None:
             translated = await bot.translator.translate(settings.provider, message.content, source, target)
         except Exception:
             return
-        await send_translation(
+        translated_msg = await send_translation(
             channel=message.channel,
             original_text=message.content,
             translated_text=translated,
@@ -484,6 +486,8 @@ async def on_message(message: discord.Message) -> None:
             display_mode=settings.display_mode,
             attachments=message.attachments,
         )
+        if translated_msg:
+            bot.message_map[message.id] = translated_msg.id
         try:
             await message.delete()
         except discord.Forbidden:
@@ -511,6 +515,32 @@ async def on_message(message: discord.Message) -> None:
                     display_mode=settings.display_mode,
                     attachments=message.attachments,
                 )
+
+
+@bot.event
+async def on_reaction_add(reaction: discord.Reaction, user: discord.User) -> None:
+    if user.bot:
+        return
+    if reaction.message.id in bot.message_map:
+        translated_msg_id = bot.message_map[reaction.message.id]
+        try:
+            translated_msg = await reaction.message.channel.fetch_message(translated_msg_id)
+            await translated_msg.add_reaction(reaction.emoji)
+        except Exception:
+            pass
+
+
+@bot.event
+async def on_reaction_remove(reaction: discord.Reaction, user: discord.User) -> None:
+    if user.bot:
+        return
+    if reaction.message.id in bot.message_map:
+        translated_msg_id = bot.message_map[reaction.message.id]
+        try:
+            translated_msg = await reaction.message.channel.fetch_message(translated_msg_id)
+            await translated_msg.remove_reaction(reaction.emoji, bot.user)
+        except Exception:
+            pass
 
 
 @bot.tree.command(name="translate", description="Translate a piece of text")
