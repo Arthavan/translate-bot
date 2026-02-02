@@ -41,16 +41,29 @@ Cloudflare Pages is **not** suitable (no long-running processes). For free-ish h
 - Fly.io / Render / Railway (free tiers may be limited)
 - Cloudflare Workers (paid after free tier)
 
-## Deploy on Render (free worker)
-1) Create a new Render account and connect your GitHub repo.
-2) Choose "Background Worker" and select this repository.
-3) Render will auto-detect [render.yaml](render.yaml).
-4) Add environment variables in the Render dashboard (do not commit secrets):
-   - DISCORD_TOKEN
-   - DEEPSEEK_API_KEY (or OPENAI_API_KEY / GOOGLE_API_KEY)
-5) Deploy. The bot will come online once the worker is running.
+## Deploy on Fly.io (free tier)
+1) Install Fly CLI: https://fly.io/docs/getting-started/installing-flyctl/
+2) Sign up for free at https://fly.io
+3) Authenticate: `flyctl auth login`
+4) Create and deploy the app:
+   ```
+   flyctl launch --image-label latest
+   ```
+   When asked for an app name, use `discord-translate-bot` (or your own).
+5) Set environment variables in Fly (do not commit secrets):
+   ```
+   flyctl secrets set DISCORD_TOKEN=your_token GEMINI_API_KEY=your_key
+   ```
+   Or use individual commands:
+   ```
+   flyctl secrets set DISCORD_TOKEN=your_discord_bot_token
+   flyctl secrets set GEMINI_API_KEY=your_gemini_key
+   ```
+6) Deploy: `flyctl deploy`
 
-Your local .env files (including .env.gemini) are not used in Render.
+Your local .env files (including .env.gemini) are not used in Fly.io.
+
+**Free tier limits:** 3 shared VMs, 3GB storage. Should work fine for a Discord bot.
 
 ## Provider keys
 Set keys in .env:

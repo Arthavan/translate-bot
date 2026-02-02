@@ -1,0 +1,16 @@
+# fly.toml app configuration file
+app = "discord-translate-bot"
+primary_region = "ord"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PYTHONUNBUFFERED = "true"
+
+[[services]]
+  internal_port = 8080
+  processes = ["app"]
+
+[processes]
+  app = "python main.py"
