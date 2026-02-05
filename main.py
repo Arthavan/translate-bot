@@ -28,6 +28,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "bidir_languages": ["en", "zh"],
     "fallback_target_language": "en",
     "default_display_mode": "webhook",
+    "default_show_labels": True,
 }
 
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
@@ -56,6 +57,7 @@ class GuildSettings:
     source_language: str
     target_language: str
     display_mode: str
+    show_labels: bool
     auto_translate_channels: List[int]
     mirror_pairs: List[Dict[str, int]]
 
@@ -81,6 +83,7 @@ class SettingsManager:
             "source_language": self._config["default_source_language"],
             "target_language": self._config["default_target_language"],
             "display_mode": self._config["default_display_mode"],
+            "show_labels": self._config["default_show_labels"],
             "auto_translate_channels": [],
             "mirror_pairs": [],
         }
@@ -389,13 +392,18 @@ def build_embed(
     source: str,
     target: str,
     author: discord.User | discord.Member,
+    show_labels: bool = True,
 ) -> discord.Embed:
     embed = discord.Embed(
         title=f"Translation ({source} → {target})",
         color=discord.Color.blurple(),
     )
-    embed.add_field(name=f"Original ({source})", value=original_text, inline=False)
-    embed.add_field(name=f"Translation ({target})", value=translated_text, inline=False)
+    if show_labels:
+        embed.add_field(name=f"Original ({source})", value=original_text, inline=False)
+        embed.add_field(name=f"Translation ({target})", value=translated_text, inline=False)
+    else:
+        embed.add_field(name=source, value=original_text, inline=False)
+        embed.add_field(name=target, value=translated_text, inline=False)
     embed.set_author(name=f"{author.display_name} APP", icon_url=author.display_avatar.url)
     return embed
 
@@ -408,6 +416,7 @@ async def send_translation(
     target: str,
     author: discord.User | discord.Member,
     display_mode: str,
+    show_labels: bool = True,
     attachments: List[discord.Attachment] = None,
 ) -> Optional[discord.Message]:
     if attachments is None:
@@ -433,10 +442,13 @@ async def send_translation(
                     pass
             
             if display_mode == "webhook" or display_mode == "embed":
-                embed = build_embed(original_text, translated_text, source, target, author)
+                embed = build_embed(original_text, translated_text, source, target, author, show_labels)
                 msg = await webhook.send(embed=embed, username=author.display_name, avatar_url=author.display_avatar.url, files=files, wait=True)
             elif display_mode == "text":
-                content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
+                if show_labels:
+                    content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
+                else:
+                    content = f"**{source}:** {original_text}\n**{target}:** {translated_text}"
                 msg = await webhook.send(content, username=author.display_name, avatar_url=author.display_avatar.url, files=files, wait=True)
             return msg
         except discord.Forbidden:
@@ -452,10 +464,13 @@ async def send_translation(
             pass
     
     if display_mode == "embed":
-        embed = build_embed(original_text, translated_text, source, target, author)
+        embed = build_embed(original_text, translated_text, source, target, author, show_labels)
         return await channel.send(embed=embed, files=files, allowed_mentions=discord.AllowedMentions.none())
     else:
-        content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
+        if show_labels:
+            content = f"**Original ({source}):** {original_text}\n**Translation ({target}):** {translated_text}"
+        else:
+            content = f"**{source}:** {original_text}\n**{target}:** {translated_text}"
         return await channel.send(content, files=files, allowed_mentions=discord.AllowedMentions.none())
 
 
@@ -484,6 +499,7 @@ async def on_message(message: discord.Message) -> None:
             target=target,
             author=message.author,
             display_mode=settings.display_mode,
+            show_labels=settings.show_labels,
             attachments=message.attachments,
         )
         if translated_msg:
@@ -513,6 +529,7 @@ async def on_message(message: discord.Message) -> None:
                     target=target,
                     author=message.author,
                     display_mode=settings.display_mode,
+                    show_labels=settings.show_labels,
                     attachments=message.attachments,
                 )
 
@@ -578,7 +595,7 @@ async def translate_command(
         await interaction.response.send_message(f"Translation failed: {exc}", ephemeral=True)
         return
     # Always use embed for command responses
-    embed = build_embed(text, translated, source_lang, target_lang, interaction.user)
+    embed = build_embed(text, translated, source_lang, target_lang, interaction.user, settings.show_labels)
     await interaction.response.send_message(embed=embed)
 
 
@@ -761,6 +778,23 @@ async def set_display_mode(interaction: discord.Interaction, mode: str) -> None:
     await interaction.response.send_message(f"Display mode set to {mode}.", ephemeral=True)
 
 
+@bot.tree.command(name="set_show_labels", description="Show/hide Original and Translation labels")
+@app_commands.describe(enabled="Show labels like 'Original (en)' or just show language codes")
+async def set_show_labels(interaction: discord.Interaction, enabled: bool) -> None:
+    if not interaction.guild:
+        await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+        return
+    if not is_admin(interaction):
+        await interaction.response.send_message("You need Manage Server to do that.", ephemeral=True)
+        return
+    await settings_manager.update_settings(interaction.guild.id, {"show_labels": enabled})
+    await interaction.response.send_message(
+        f"Labels {'enabled' if enabled else 'disabled'}. " + 
+        ("Translations will show: Original (en), Translation (zh)" if enabled else "Translations will show: en, zh"),
+        ephemeral=True,
+    )
+
+
 @bot.tree.command(name="set_embeds", description="Enable/disable embed output")
 @app_commands.describe(enabled="Use embeds for translations")
 async def set_embeds(interaction: discord.Interaction, enabled: bool) -> None:
@@ -788,6 +822,7 @@ async def status(interaction: discord.Interaction) -> None:
     embed.add_field(name="Provider", value=settings.provider, inline=True)
     embed.add_field(name="Mode", value=settings.mode, inline=True)
     embed.add_field(name="Display mode", value=settings.display_mode, inline=True)
+    embed.add_field(name="Show labels", value="Yes" if settings.show_labels else "No", inline=True)
     embed.add_field(name="Languages", value=f"{settings.source_language} → {settings.target_language}", inline=False)
     embed.add_field(
         name="Your overrides",
